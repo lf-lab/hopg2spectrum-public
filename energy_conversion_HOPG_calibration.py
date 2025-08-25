@@ -111,10 +111,135 @@ def setup_calibration_references():
     # ブラッグの式: nλ = 2d sinθ より θ = arcsin(12.3984/(2d*E))
     theta_def = np.arcsin(12.3984/(2.0 * D_HOPG * E_def))
     
-    # 基準線のIP上での位置 [cm]
+    # 基準線のIP上での位置 [cm] - デフォルト値
     place = np.array([1.005, 1.52])
     
     return E_def, theta_def, place
+
+def interactive_calibration_selection(data, E_def):
+    """対話的なキャリブレーション基準線位置選択
+    
+    Args:
+        data (numpy.ndarray): IPスキャンデータ
+        E_def (numpy.ndarray): 基準エネルギー配列
+    
+    Returns:
+        numpy.ndarray: 選択された基準位置配列
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.widgets import Button
+    
+    print("   - 対話的な基準線位置選択を開始します...")
+    print("   - グラフ上で2つの基準線位置をクリックして選択してください")
+    print("   - 基準エネルギー 1: {:.3f} keV".format(E_def[0]))
+    print("   - 基準エネルギー 2: {:.3f} keV".format(E_def[1]))
+    
+    # グラフの設定
+    plt.rcParams.update({'font.size': 12})
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # 生データをプロット
+    ax.plot(data[:,0], data[:,1], 'b-', linewidth=2, label='IP Scan Data')
+    ax.set_xlabel('Position [cm]', fontsize=14)
+    ax.set_ylabel('Intensity [PSL]', fontsize=14)
+    ax.set_title('Select Calibration Reference Positions\nClick to select positions for the two reference lines', fontsize=16)
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    
+    # 選択された位置を保存するリスト
+    selected_positions = []
+    vertical_lines = []
+    
+    def on_click(event):
+        """クリックイベントハンドラ"""
+        if event.inaxes != ax:
+            return
+        
+        if len(selected_positions) < 2:
+            x_pos = event.xdata
+            selected_positions.append(x_pos)
+            
+            # 縦線を描画
+            line = ax.axvline(x=x_pos, color='red', linestyle='--', linewidth=2, 
+                             alpha=0.8, label=f'Reference {len(selected_positions)}: {E_def[len(selected_positions)-1]:.3f} keV')
+            vertical_lines.append(line)
+            
+            # テキスト表示
+            y_max = np.max(data[:,1])
+            ax.text(x_pos, y_max * 0.9, f'{E_def[len(selected_positions)-1]:.3f} keV\n{x_pos:.3f} cm', 
+                   ha='center', va='top', fontsize=10, 
+                   bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.7))
+            
+            print(f"   - 基準線 {len(selected_positions)}: {x_pos:.3f} cm ({E_def[len(selected_positions)-1]:.3f} keV)")
+            
+            if len(selected_positions) == 2:
+                print("   - 2つの基準線位置が選択されました")
+                print("   - 'Confirm Selection' ボタンをクリックして確定してください")
+                confirm_button.label.set_text('Confirm Selection')
+                reset_button.label.set_text('Reset Selection')
+            
+            plt.draw()
+    
+    def confirm_selection(event):
+        """選択確定ボタンのイベントハンドラ"""
+        if len(selected_positions) == 2:
+            plt.close(fig)
+        else:
+            print("   - 2つの位置を選択してから確定してください")
+    
+    def reset_selection(event):
+        """リセットボタンのイベントハンドラ"""
+        nonlocal selected_positions, vertical_lines
+        
+        # 縦線とテキストを削除
+        for line in vertical_lines:
+            line.remove()
+        vertical_lines.clear()
+        
+        # テキストも削除
+        for text in ax.texts[1:]:  # 最初のテキスト（タイトル等）以外を削除
+            text.remove()
+        
+        selected_positions.clear()
+        confirm_button.label.set_text('Select 2 Positions')
+        reset_button.label.set_text('Reset')
+        
+        print("   - 選択をリセットしました。再度2つの位置をクリックしてください")
+        plt.draw()
+    
+    # ボタンの追加
+    ax_confirm = plt.axes([0.7, 0.02, 0.12, 0.04])
+    ax_reset = plt.axes([0.83, 0.02, 0.12, 0.04])
+    confirm_button = Button(ax_confirm, 'Select 2 Positions')
+    reset_button = Button(ax_reset, 'Reset')
+    
+    confirm_button.on_clicked(confirm_selection)
+    reset_button.on_clicked(reset_selection)
+    
+    # クリックイベントを接続
+    fig.canvas.mpl_connect('button_press_event', on_click)
+    
+    # 使用方法の表示
+    instruction_text = ("Instructions:\n"
+                       "1. Click on the graph to select positions for reference lines\n"
+                       "2. Select 2 positions corresponding to the reference energies\n"
+                       "3. Click 'Confirm Selection' when done")
+    ax.text(0.02, 0.98, instruction_text, transform=ax.transAxes, fontsize=10,
+            verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', facecolor='lightblue', alpha=0.8))
+    
+    # グラフを表示
+    plt.tight_layout()
+    plt.show()
+    
+    if len(selected_positions) == 2:
+        place = np.array(selected_positions)
+        print("   - 選択された基準位置:")
+        print("     位置 1: {:.3f} cm ({:.3f} keV)".format(place[0], E_def[0]))
+        print("     位置 2: {:.3f} cm ({:.3f} keV)".format(place[1], E_def[1]))
+        return place
+    else:
+        print("   - 選択がキャンセルされました。デフォルト値を使用します")
+        return np.array([1.005, 1.52])
 
 def calculate_calibration_parameters(E_def, theta_def, place):
     """キャリブレーションパラメータの計算
@@ -686,6 +811,8 @@ def main():
                        help='時間遅延計算方法 (auto: 自動計算, manual: 手動入力) [デフォルト: auto]')
     parser.add_argument('--time-delay', type=float,
                        help='手動入力時の時間遅延 [分] (--time-mode manual使用時)')
+    parser.add_argument('--calibration-mode', choices=['interactive', 'default'], default='interactive',
+                       help='キャリブレーション位置選択方法 (interactive: 対話的選択, default: デフォルト値) [デフォルト: interactive]')
     
     args = parser.parse_args()
     
@@ -752,7 +879,32 @@ def main():
         
         # 5. キャリブレーション基準線の設定
         print("\n5. キャリブレーション基準線の設定...")
-        E_def, theta_def, place = setup_calibration_references()
+        E_def, theta_def, default_place = setup_calibration_references()
+        
+        # コマンドライン引数またはユーザー選択による位置決定
+        if args.calibration_mode == 'interactive':
+            place = interactive_calibration_selection(data, E_def)
+        elif args.calibration_mode == 'default':
+            place = default_place
+            print("   - デフォルト値を使用します")
+        else:
+            # インタラクティブモード（引数なしの場合）
+            print("基準線位置の選択方法:")
+            print("1. 対話的にグラフ上で選択")
+            print("2. デフォルト値を使用")
+            
+            while True:
+                choice = input("選択 (1 または 2): ").strip()
+                if choice == "1":
+                    place = interactive_calibration_selection(data, E_def)
+                    break
+                elif choice == "2":
+                    place = default_place
+                    print("   - デフォルト値を使用します")
+                    break
+                else:
+                    print("1 または 2 を入力してください")
+        
         print("   - 基準エネルギー 1: {:.3f} keV".format(E_def[0]))
         print("   - 基準エネルギー 2: {:.3f} keV".format(E_def[1]))
         print("   - 基準位置 1: {:.3f} cm".format(place[0]))

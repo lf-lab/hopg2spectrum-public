@@ -27,12 +27,14 @@ def ip_time_correction(t):
     """時間に依存するIPの感度補正関数
     
     Args:
-        t (float): 測定時間遅延 [時間]
+        t (float): 測定時間遅延 [分]
     
     Returns:
         float: 時間補正係数
     """
-    return 0.297 * np.exp(-t/57.6) + 0.723
+    # 分単位から時間単位に変換して計算（関数内の係数は時間単位ベース）
+    t_hours = t / 60.0
+    return 0.297 * np.exp(-t_hours/57.6) + 0.723
 
 def ip_energy_correction(energy):
     """エネルギーに依存するIPの感度補正関数
@@ -633,15 +635,15 @@ def calculate_time_delay_auto(file_path, shot_num, laser_type):
         if time_diff_minutes < 0:
             time_diff_minutes += 24 * 60  # 24時間を加算
         
-        # 時間単位に変換
-        time_delay_hours = time_diff_minutes / 60.0
+        # 分単位のまま返す
+        time_delay_minutes = time_diff_minutes
         
         print("    - 時間差分計算結果:")
         print("      ショット時刻: {}時{}分".format(shot_hours, shot_minutes))
         print("      IP読み取り時刻: {}時{}分".format(read_hours, read_minutes))
-        print("      時間遅延: {:.2f} 時間".format(time_delay_hours))
+        print("      時間遅延: {:.1f} 分 ({:.2f} 時間)".format(time_delay_minutes, time_delay_minutes/60.0))
         
-        return time_delay_hours
+        return time_delay_minutes
         
     except ValueError as e:
         print("    - 時間抽出エラー: {}".format(e))
@@ -663,7 +665,7 @@ def main():
     parser.add_argument('--time-mode', choices=['auto', 'manual'], default='auto',
                        help='時間遅延計算方法 (auto: 自動計算, manual: 手動入力) [デフォルト: auto]')
     parser.add_argument('--time-delay', type=float,
-                       help='手動入力時の時間遅延 [時間] (--time-mode manual使用時)')
+                       help='手動入力時の時間遅延 [分] (--time-mode manual使用時)')
     
     args = parser.parse_args()
     
@@ -700,13 +702,13 @@ def main():
             
             if time_delay is None:
                 print("   - 自動計算に失敗しました。手動入力に切り替えます。")
-                time_delay = float(input("   手動で時間遅延を入力してください（時間）: "))
+                time_delay = float(input("   手動で時間遅延を入力してください（分）: "))
         elif args.time_mode == 'manual':
             if args.time_delay is not None:
                 time_delay = args.time_delay
-                print(f"   - 指定された時間遅延: {time_delay:.3f} 時間")
+                print(f"   - 指定された時間遅延: {time_delay:.1f} 分 ({time_delay/60.0:.3f} 時間)")
             else:
-                time_delay = float(input("   手動で時間遅延を入力してください（時間）: "))
+                time_delay = float(input("   手動で時間遅延を入力してください（分）: "))
         else:
             # この部分は到達しないはずだが、フォールバック
             time_input = get_user_input()
@@ -717,11 +719,11 @@ def main():
                 
                 if time_delay is None:
                     print("   - 自動計算に失敗しました。手動入力に切り替えます。")
-                    time_delay = float(input("   手動で時間遅延を入力してください（時間）: "))
+                    time_delay = float(input("   手動で時間遅延を入力してください（分）: "))
             else:
                 time_delay = time_input
         
-        print("   - 使用する時間遅延: {:.3f} 時間".format(time_delay))
+        print("   - 使用する時間遅延: {:.1f} 分 ({:.3f} 時間)".format(time_delay, time_delay/60.0))
         
         # 4. 実験データの読み込み
         print("\n4. 実験データの読み込み中...")

@@ -54,11 +54,11 @@ def load_filter_data():
         tuple: (filter1, filter2) - ベリリウムとポリエチレンフィルターの補間関数
     """
     # Be（ベリリウム）フィルター 500μm厚の透過率データ
-    filter1_data = np.loadtxt('Be_500um_transmittance.dat', skiprows=2, unpack=True)
+    filter1_data = np.loadtxt('filter/Be_500um_transmittance.dat', skiprows=2, unpack=True)
     filter1 = interp1d(filter1_data[0,:]*1.0E-03, filter1_data[1,:], kind='cubic')
     
     # CH2（ポリエチレン）フィルター 50μm厚の透過率データ
-    filter2_data = np.loadtxt('CH2_50um_transmittance.dat', skiprows=2, unpack=True)
+    filter2_data = np.loadtxt('filter/CH2_50um_transmittance.dat', skiprows=2, unpack=True)
     filter2 = interp1d(filter2_data[0,:]*1.0E-03, filter2_data[1,:], kind='cubic')
     
     return filter1, filter2
@@ -804,8 +804,8 @@ def main():
     except FileNotFoundError as e:
         print("エラー: ファイルが見つかりません - {}".format(e))
         print("必要なファイル:")
-        print("  - Be_500um_transmittance.dat")
-        print("  - CH2_50um_transmittance.dat")
+        print("  - filter/Be_500um_transmittance.dat")
+        print("  - filter/CH2_50um_transmittance.dat")
         print("  - 指定されたデータファイル (.csv)")
     except ValueError as e:
         print("エラー: {}".format(e))

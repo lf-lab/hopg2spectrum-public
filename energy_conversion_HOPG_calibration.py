@@ -5,6 +5,7 @@ import pprint
 import numpy as np
 import re
 import os
+import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from time import sleep
@@ -539,13 +540,13 @@ def fetch_shot_time_from_web(shot_num, laser_type):
         # URLの構築
         if laser_type == "GXII":
             url = "http://god.ile.osaka-u.ac.jp/gxii/ShotDataViewer/ShotDataViewer.php?Id={}".format(shot_id)
-            target_line = 133  # GXII の場合は133行目
         elif laser_type == "LFEX":
             url = "http://god.ile.osaka-u.ac.jp/lfex-fe/ShotDataViewer/ShotDataViewer?Id={}".format(shot_id)
-            target_line = 101  # LFEX の場合は101行目
         else:
-            print("    - 不明なレーザータイプ: {}".format(laser_type))
-            return None, None
+            print("    - ✗ エラー: 不明なレーザータイプ: {}".format(laser_type))
+            print("    - 対応しているレーザータイプ: GXII, LFEX")
+            print("    - プログラムを終了します")
+            sys.exit(1)
         
         print("    - ショット時刻取得中: {}".format(url))
         
@@ -558,38 +559,52 @@ def fetch_shot_time_from_web(shot_num, laser_type):
         
         # HTMLを解析
         soup = BeautifulSoup(response.content, 'html.parser')
-        html_lines = str(soup).split('\n')
         
-        # 指定行を取得（1ベースのインデックスを0ベースに変換）
-        if len(html_lines) >= target_line:
-            target_content = html_lines[target_line - 1]
+        # HTMLから直接大文字のMAINを検索
+        html_content = response.text
+        main_pos = html_content.find('MAIN')
+        
+        if main_pos != -1:
+            print("    - 大文字MAIN発見（HTML直接検索）")
             
-            # 時刻パターンを検索（HH:MM形式）
+            # MAINより後の部分で最初の時刻を探す
+            after_main = html_content[main_pos:]
             time_pattern = r'(\d{1,2}):(\d{2})'
-            time_match = re.search(time_pattern, target_content)
+            time_matches = re.findall(time_pattern, after_main)
             
-            if time_match:
-                hours = int(time_match.group(1))
-                minutes = int(time_match.group(2))
+            if time_matches:
+                print("    - MAIN後の時刻候補: {}".format(time_matches))
                 
-                # 時間と分の妥当性チェック
-                if 0 <= hours <= 23 and 0 <= minutes <= 59:
-                    print("    - ショット時刻: {}時{}分".format(hours, minutes))
-                    return hours, minutes
-                else:
-                    print("    - 無効な時刻形式: {}時{}分".format(hours, minutes))
-            else:
-                print("    - {}行目に時刻情報が見つかりません".format(target_line))
-                print("    - 行の内容: {}".format(target_content.strip()[:100]))
-        else:
-            print("    - HTMLの行数が不足しています（{}行未満）".format(target_line))
+                # 最初の有効な時刻を使用（MAINの直後）
+                for time_match in time_matches:
+                    try:
+                        hours = int(time_match[0])
+                        minutes = int(time_match[1])
+                        
+                        if 0 <= hours <= 23 and 0 <= minutes <= 59:
+                            print("    - ✓ ショット時刻（MAIN直後）: {}時{}分".format(hours, minutes))
+                            return hours, minutes
+                    except ValueError:
+                        continue
+            
+            # MAIN後に時刻が見つからない場合
+            print("    - ✗ エラー: MAIN後に有効な時刻が見つかりませんでした")
+            print("    - 手動入力が必要です")
+            return "TIME_NOT_FOUND", None
+        
+        # MAINが見つからない場合
+        print("    - ✗ エラー: MAINキーワードが見つかりませんでした")
+        print("    - 手動入力が必要です")
+        return "MAIN_NOT_FOUND", None
             
     except requests.exceptions.RequestException as e:
-        print("    - Webページ取得エラー: {}".format(e))
+        print("    - ✗ Webページ取得エラー: {}".format(e))
+        print("    - 手動入力が必要です")
+        return "WEB_ERROR", None
     except Exception as e:
-        print("    - ショット時刻取得エラー: {}".format(e))
-    
-    return None, None
+        print("    - ✗ ショット時刻取得エラー: {}".format(e))
+        print("    - 手動入力が必要です")
+        return "UNKNOWN_ERROR", None
 
 def calculate_time_delay_auto(file_path, shot_num, laser_type):
     """ファイル名とWebページから自動的に時間遅延を計算する
@@ -612,8 +627,31 @@ def calculate_time_delay_auto(file_path, shot_num, laser_type):
         print("    - Webページからショット時刻を取得中...")
         shot_hours, shot_minutes = fetch_shot_time_from_web(shot_num, laser_type)
         
+        # エラー時の手動入力フォールバック
+        if isinstance(shot_hours, str):  # エラーコードが返された場合
+            print("    - ✗ 自動取得に失敗しました")
+            print("    - 手動でショット時刻を入力してください")
+            
+            while True:
+                try:
+                    shot_time_input = input("    ショット時刻を入力 (HH:MM形式): ").strip()
+                    if re.match(r'^\d{1,2}:\d{2}$', shot_time_input):
+                        time_parts = shot_time_input.split(':')
+                        shot_hours = int(time_parts[0])
+                        shot_minutes = int(time_parts[1])
+                        
+                        if 0 <= shot_hours <= 23 and 0 <= shot_minutes <= 59:
+                            print("    - 手動入力されたショット時刻: {}時{}分".format(shot_hours, shot_minutes))
+                            break
+                        else:
+                            print("    - 無効な時刻です。0-23時、0-59分の範囲で入力してください")
+                    else:
+                        print("    - HH:MM形式で入力してください（例：14:20）")
+                except (ValueError, KeyboardInterrupt):
+                    print("    - 入力が無効です。再度入力してください")
+        
         if shot_hours is None or shot_minutes is None:
-            print("    - ショット時刻の取得に失敗しました")
+            print("    - ✗ ショット時刻が取得できませんでした")
             return None
         
         # 3. 時間差分を計算

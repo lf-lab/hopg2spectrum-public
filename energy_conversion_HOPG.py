@@ -33,9 +33,7 @@ def ip_time_correction(t):
     Returns:
         float: 時間補正係数
     """
-    # 分単位から時間単位に変換して計算（関数内の係数は時間単位ベース）
-    t_hours = t / 60.0
-    return 0.297 * np.exp(-t_hours/57.6) + 0.723
+    return 0.297 * np.exp(-t/57.6) + 0.723
 
 def ip_energy_correction(energy):
     """エネルギーに依存するIPの感度補正関数
@@ -104,7 +102,7 @@ def get_user_input(file_path=None, shot_num=None, laser_type=None):
         # 自動計算が利用できない場合は手動入力のみ
         if not AUTO_TIME_AVAILABLE:
             print("注意: 自動時間計算機能が利用できません（キャリブレーションスクリプトが必要）")
-        t = input("Input the scanning time delay (hours): ")
+        t = input("Input the scanning time delay (minutes): ")
         return float(t)
 
 def load_experimental_data(shot_num, file_path):
@@ -120,8 +118,199 @@ def load_experimental_data(shot_num, file_path):
     return np.genfromtxt('{}.csv'.format(file_path), delimiter=',', 
                         skip_header=1, skip_footer=0, autostrip=True)
 
-def calibrate_parameters():
+def interactive_single_calibration_selection(data, E_def):
+    """対話的な単一キャリブレーション基準線位置選択
+    
+    Args:
+        data (numpy.ndarray): IPスキャンデータ
+        E_def (float): 基準エネルギー
+    
+    Returns:
+        float: 選択された基準位置
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.widgets import Button
+    
+    print("   - 対話的な基準線位置選択を開始します...")
+    print("   - グラフ上で1つの基準線位置をクリックして選択してください")
+    print("   - 選択後、縦線をドラッグして微調整できます")
+    print("   - 基準エネルギー: {:.3f} keV".format(E_def))
+    
+    # グラフの設定
+    plt.rcParams.update({'font.size': 12})
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # 生データをプロット
+    ax.plot(data[:,0], data[:,1], 'b-', linewidth=2, label='IP Scan Data')
+    ax.set_xlabel('Position [cm]', fontsize=14)
+    ax.set_ylabel('Intensity [PSL]', fontsize=14)
+    ax.set_title('Select Single Calibration Reference Position\nClick to place, then drag to fine-tune position', fontsize=16)
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    
+    # 選択された位置を保存する変数
+    selected_position = [None]  # リストで包んで参照渡しにする
+    vertical_line = [None]
+    text_annotation = [None]
+    
+    # ドラッグ可能な縦線クラス（単一版）
+    class DraggableSingleLine:
+        def __init__(self, line, text, ax, selected_position):
+            self.line = line
+            self.text = text
+            self.ax = ax
+            self.selected_position = selected_position
+            self.press = None
+            self.is_dragging = False
+            
+        def connect(self):
+            """イベントを接続"""
+            self.cidpress = self.line.figure.canvas.mpl_connect('button_press_event', self.on_press)
+            self.cidrelease = self.line.figure.canvas.mpl_connect('button_release_event', self.on_release)
+            self.cidmotion = self.line.figure.canvas.mpl_connect('motion_notify_event', self.on_motion)
+            
+        def on_press(self, event):
+            """マウス押下時の処理"""
+            if event.inaxes != self.ax:
+                return
+            
+            # 縦線の位置を取得
+            line_x = self.line.get_xdata()[0]
+            
+            # クリック位置が縦線に近いかチェック（許容範囲: 0.05cm）
+            tolerance = 0.05
+            if abs(event.xdata - line_x) <= tolerance:
+                self.press = (event.xdata, event.ydata)
+                self.is_dragging = True
+                # カーソルを変更
+                self.ax.figure.canvas.set_cursor(1)  # 手のカーソル
+                
+        def on_motion(self, event):
+            """マウス移動時の処理"""
+            if not self.is_dragging or self.press is None:
+                return
+            
+            if event.inaxes != self.ax:
+                return
+                
+            # 新しいx位置を取得
+            new_x = event.xdata
+            if new_x is None:
+                return
+                
+            # 線の位置を更新
+            self.line.set_xdata([new_x, new_x])
+            
+            # テキストの位置を更新
+            y_max = np.max(data[:,1])
+            self.text.set_position((new_x, y_max * 0.9))
+            self.text.set_text(f'{E_def:.3f} keV\n{new_x:.3f} cm')
+            
+            # 選択位置を更新
+            self.selected_position[0] = new_x
+            
+            # 画面を更新
+            self.ax.figure.canvas.draw_idle()
+            
+        def on_release(self, event):
+            """マウス離上時の処理"""
+            if self.is_dragging:
+                self.is_dragging = False
+                self.press = None
+                # カーソルを元に戻す
+                self.ax.figure.canvas.set_cursor(0)  # 通常のカーソル
+                
+                if event.inaxes == self.ax and event.xdata is not None:
+                    print(f"   - 基準線を {event.xdata:.3f} cm に調整しました ({E_def:.3f} keV)")
+    
+    # ドラッグ可能オブジェクト
+    draggable_object = [None]
+    
+    def on_click(event):
+        """クリックイベントハンドラ"""
+        if event.inaxes != ax:
+            return
+        
+        # 既存のドラッグ処理中は新しい線を追加しない
+        if draggable_object[0] is not None and draggable_object[0].is_dragging:
+            return
+            
+        if selected_position[0] is None:
+            x_pos = event.xdata
+            selected_position[0] = x_pos
+            
+            # 既存の線があれば削除
+            if vertical_line[0] is not None:
+                vertical_line[0].remove()
+            if text_annotation[0] is not None:
+                text_annotation[0].remove()
+            
+            # 縦線を描画（適度な太さでドラッグしやすく）
+            line = ax.axvline(x=x_pos, color='red', linestyle='--', linewidth=2, 
+                             alpha=0.8, picker=True, pickradius=15,
+                             label=f'Reference: {E_def:.3f} keV')
+            vertical_line[0] = line
+            
+            # テキスト表示
+            y_max = np.max(data[:,1])
+            text = ax.text(x_pos, y_max * 0.9, f'{E_def:.3f} keV\n{x_pos:.3f} cm', 
+                          ha='center', va='top', fontsize=11, 
+                          bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.8))
+            text_annotation[0] = text
+            
+            # ドラッグ可能オブジェクトを作成
+            draggable = DraggableSingleLine(line, text, ax, selected_position)
+            draggable.connect()
+            draggable_object[0] = draggable
+            
+            print(f"   - 基準線: {x_pos:.3f} cm ({E_def:.3f} keV)")
+            print(f"   - 赤い線をドラッグして位置を微調整できます")
+            print("   - 位置が決まったら 'Confirm Selection' をクリックしてください")
+            
+            confirm_button.label.set_text('Confirm Selection')
+            plt.draw()
+    
+    def confirm_selection(event):
+        """選択確定ボタンのイベントハンドラ"""
+        if selected_position[0] is not None:
+            plt.close(fig)
+        else:
+            print("   - 1つの位置を選択してから確定してください")
+    
+    # ボタンの追加（Confirmボタンのみ）
+    ax_confirm = plt.axes([0.8, 0.02, 0.15, 0.04])
+    confirm_button = Button(ax_confirm, 'Select Position')
+    confirm_button.on_clicked(confirm_selection)
+    
+    # クリックイベントを接続
+    fig.canvas.mpl_connect('button_press_event', on_click)
+    
+    # 使用方法の表示
+    instruction_text = ("Instructions:\n"
+                       "1. Click on the graph to place reference line\n"
+                       "2. Drag the red line to fine-tune position\n"
+                       "3. Click 'Confirm Selection' when done")
+    ax.text(0.02, 0.98, instruction_text, transform=ax.transAxes, fontsize=10,
+            verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', facecolor='lightblue', alpha=0.8))
+    
+    # グラフを表示
+    plt.tight_layout()
+    plt.show()
+    
+    if selected_position[0] is not None:
+        place = selected_position[0]
+        print("   - 選択された基準位置: {:.3f} cm ({:.3f} keV)".format(place, E_def))
+        return place
+    else:
+        print("   - 選択がキャンセルされました。デフォルト値を使用します")
+        return 1.005  # デフォルト値
+
+def calibrate_parameters(data=None, interactive_mode=False):
     """キャリブレーションパラメータの設定と微調整
+    
+    Args:
+        data (numpy.ndarray, optional): IPスキャンデータ（インタラクティブモード用）
+        interactive_mode (bool): インタラクティブキャリブレーションを使用するかどうか
     
     Returns:
         tuple: (s, E_def, theta_def, place) - キャリブレーションパラメータ
@@ -130,11 +319,25 @@ def calibrate_parameters():
     E_def = 8.048
     # 基準線のブラッグ角 [rad]
     theta_def = np.arcsin(12.3984/(2.0 * D_HOPG * E_def))
+    
     # 基準線のIP上での位置 [cm]
-    place = 1.005  # 手動で設定された基準線位置
+    if interactive_mode and data is not None:
+        try:
+            print("   - インタラクティブモードで基準線位置を選択します")
+            place = interactive_single_calibration_selection(data, E_def)
+        except Exception as e:
+            print(f"   - インタラクティブ選択でエラーが発生しました: {e}")
+            print("   - 最大値の位置を自動選択します")
+            max_index = np.argmax(data[:,1])
+            place = data[max_index, 0]
+            print(f"   - 最大値位置: {place:.3f} cm (強度: {data[max_index, 1]:.2f})")
+            place = data[max_index, 0]
+            print(f"   - 最大値位置: {place:.3f} cm (強度: {data[max_index, 1]:.2f})")
+    else:
+        place = 1.005  # 手動で設定された基準線位置
     
     # 事前に決定されたキャリブレーションパラメータ
-    s = [-0.01988027, -0.79709931]
+    s = [-0.00905962, -0.84425207]  # 自動更新: 2025年08月25日 17時38分55秒 (ショット: G43798)
     
     # キャリブレーションパラメータの微調整
     diff = 13 + s[0] - place - (50 - s[1]) * np.tan(np.arcsin(12.3984/(2*D_HOPG*E_def)))
@@ -191,7 +394,7 @@ def convert_intensity_to_photon(data, E, t, dEdx_func, filter1, filter2):
     Args:
         data (numpy.ndarray): IPスキャンデータ
         E (numpy.ndarray): エネルギー配列
-        t (float): 時間遅延
+        t (float): 時間遅延 [分]
         dEdx_func (function): エネルギー分解能関数
         filter1, filter2: フィルター透過率関数
     
@@ -249,26 +452,46 @@ def plot_spectrum(E, Photon, shot_num):
     # データフォルダの存在確認・作成
     ensure_directory_exists('data')
     
-    plt.rcParams.update({'font.size': 22})
-    fig = plt.figure(figsize=(19.20, 10.80))
-    ax = fig.add_subplot(111)
+    # フォントとグラフの設定
+    plt.rcParams.update({
+        'font.family': 'sans-serif',
+        'font.sans-serif': ['Helvetica', 'Arial', 'DejaVu Sans'],
+        'font.size': 14,
+        'axes.linewidth': 1.5,
+        'axes.labelsize': 16,
+        'axes.titlesize': 18,
+        'xtick.labelsize': 14,
+        'ytick.labelsize': 14,
+        'legend.fontsize': 12,
+        'figure.dpi': 300
+    })
     
-    # ショット番号をグラフに表示
-    ax.text(np.min(E), 4.5E+5, "{}".format(shot_num), 
-            size=35, color='black')
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # スペクトラムをプロット（見やすいスタイル）
+    ax.plot(E, Photon, linewidth=2, color='blue', alpha=0.8)
     
     # 軸ラベルとフォーマット設定
-    ax.set_xlabel("Energy [keV]", size=30)
-    ax.set_ylabel("Absolute Photon Number [/keV]", size=30)
+    ax.set_xlabel("Energy [keV]", fontweight='bold')
+    ax.set_ylabel("Absolute Photon Number [Photon/str/keV]", fontweight='bold')
     ax.ticklabel_format(style="sci", axis="y", scilimits=(0,0))
-    plt.ylim([0, 6E+5])
     
-    # スペクトラムをプロット
-    ax.plot(E, Photon)
+    # グリッドを追加して見やすくする
+    ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
     
-    # グラフを保存
-    plt.savefig("data/HOPG_{}.png".format(shot_num), bbox_inches='tight', pad_inches=0)
-    print("   - スペクトラムグラフを保存しました: data/HOPG_{}.png".format(shot_num))
+    # 軸の範囲を自動調整
+    ax.set_xlim(np.min(E), np.max(E))
+    ax.set_ylim(0, np.max(Photon) * 1.1)
+    
+    # レイアウトを調整
+    plt.tight_layout()
+    
+    # PDFとして保存
+    plt.savefig("data/HOPG_{}.pdf".format(shot_num), bbox_inches='tight', pad_inches=0.1)
+    print("   - スペクトラムグラフを保存しました: data/HOPG_{}.pdf".format(shot_num))
+    
+    # メモリを解放
+    plt.close(fig)
 
 def extract_shot_number_from_filename(file_path):
     """ファイル名からショット番号を抽出する
@@ -393,7 +616,15 @@ def validate_data_file(file_path):
     return os.path.exists(csv_file_path)
 
 def main():
-    """HOPG X線分光器データ解析のメイン処理"""
+    """HOPG X線分光器データ解析のメイン処理
+    
+    コマンドライン使用例:
+    python energy_conversion_HOPG.py                          # 通常モード（自動時間計算）
+    python energy_conversion_HOPG.py -c                       # インタラクティブキャリブレーションモード
+    python energy_conversion_HOPG.py --calibration-mode       # インタラクティブキャリブレーションモード
+    python energy_conversion_HOPG.py --time-delay 120         # 手動時間指定（120分）
+    python energy_conversion_HOPG.py -c --time-delay 90       # インタラクティブ + 手動時間指定
+    """
     
     print("=" * 60)
     print("HOPG X線分光器データ解析プログラム")
@@ -402,10 +633,10 @@ def main():
     # コマンドライン引数の処理
     import argparse
     parser = argparse.ArgumentParser(description='HOPG X線分光器データ解析プログラム')
-    parser.add_argument('--time-mode', choices=['auto', 'manual'], default='auto',
-                       help='時間遅延計算方法 (auto: 自動計算, manual: 手動入力) [デフォルト: auto]')
-    parser.add_argument('--time-delay', type=float,
-                       help='手動入力時の時間遅延 [分] (--time-mode manual使用時)')
+    parser.add_argument('-t', '--time-delay', type=float,
+                       help='時間遅延を手動指定 [分] (指定しない場合は自動計算)')
+    parser.add_argument('-c', '--calibration-mode', action='store_true',
+                       help='インタラクティブキャリブレーションモードを有効にする')
     
     args = parser.parse_args()
 
@@ -435,23 +666,20 @@ def main():
         # 3. ユーザー入力の取得
         print("\n3. 測定パラメータの入力")
         
-        # コマンドライン引数に基づく時間取得
-        if args.time_mode == 'auto':
+        # 時間遅延の取得（簡素化されたロジック）
+        if args.time_delay is not None:
+            # 手動指定された場合
+            time_delay = args.time_delay
+            print(f"   - 指定された時間遅延: {time_delay:.1f} 分 ({time_delay/60.0:.3f} 時間)")
+        else:
+            # 自動計算を試行
             print("   - 自動時間遅延計算を開始します...")
             time_delay = calculate_time_delay_auto(file_path, shot_num, laser_type)
             
             if time_delay is None:
                 print("   - 自動計算に失敗しました。手動入力に切り替えます。")
                 time_delay = float(input("   手動で時間遅延を入力してください（分）: "))
-        elif args.time_mode == 'manual':
-            if args.time_delay is not None:
-                time_delay = args.time_delay
-                print(f"   - 指定された時間遅延: {time_delay:.1f} 分 ({time_delay/60.0:.3f} 時間)")
-            else:
-                time_delay = float(input("   手動で時間遅延を入力してください（分）: "))
-        else:
-            # フォールバック（従来の方法）
-            time_delay = get_user_input(file_path, shot_num, laser_type)
+        
         print("   - 使用する時間遅延: {:.1f} 分 ({:.3f} 時間)".format(time_delay, time_delay/60.0))
         
         # 4. 実験データの読み込み
@@ -461,7 +689,11 @@ def main():
         
         # 5. キャリブレーションパラメータの設定
         print("\n5. キャリブレーションパラメータの設定...")
-        s, E_def, theta_def, place = calibrate_parameters()
+        if args.calibration_mode:
+            print("   - インタラクティブキャリブレーションモードが有効です")
+            s, E_def, theta_def, place = calibrate_parameters(data, interactive_mode=True)
+        else:
+            s, E_def, theta_def, place = calibrate_parameters()
         print("   - 基準エネルギー: {:.3f} keV".format(E_def))
         print("   - 基準位置: {:.3f} cm".format(place))
         print("   - キャリブレーション係数: s = [{:.6f}, {:.6f}]".format(s[0], s[1]))
@@ -489,9 +721,15 @@ def main():
         print("\n" + "=" * 60)
         print("解析完了！")
         print("ショット番号: {} ({} レーザー)".format(shot_num, laser_type))
+        if args.calibration_mode:
+            print("使用モード: インタラクティブキャリブレーション")
+        else:
+            print("使用モード: 自動キャリブレーション")
         print("出力ファイル:")
         print("  - 絶対フォトン数スペクトラム: data/HOPG_{}.csv".format(shot_num))
-        print("  - スペクトラムグラフ: data/HOPG_{}.png".format(shot_num))
+        print("  - スペクトラムグラフ: data/HOPG_{}.pdf".format(shot_num))
+        if args.calibration_mode:
+            print("ヒント: 次回は同じ位置を使う場合、通常モードでも解析できます")
         print("=" * 60)
         
     except FileNotFoundError as e:

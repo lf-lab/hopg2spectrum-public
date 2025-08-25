@@ -70,18 +70,18 @@ def get_user_input():
         float: 測定時間遅延 [時間]
     """
     print("測定時間遅延の入力方法を選択してください:")
-    print("1. 自動計算（ファイル名とWebページから）")
+    print("1. 自動計算（ファイル名とWebページから）[デフォルト]")
     print("2. 手動入力")
     
     while True:
-        choice = input("選択 (1 または 2): ").strip()
-        if choice == "1":
+        choice = input("選択 (1 または 2, 何も入力しない場合は自動計算): ").strip()
+        if choice == "1" or choice == "":  # 空入力の場合も自動計算
             return "auto"
         elif choice == "2":
             t = input("Input the scanning time delay (hours): ")
             return float(t)
         else:
-            print("1 または 2 を入力してください。")
+            print("1 または 2 を入力してください（何も入力しない場合は自動計算）。")
 
 def load_experimental_data(shot_num, file_path):
     """実験データの読み込み
@@ -657,6 +657,16 @@ def main():
     print("HOPG X線分光器キャリブレーションと解析プログラム")
     print("=" * 70)
     
+    # コマンドライン引数の処理
+    import argparse
+    parser = argparse.ArgumentParser(description='HOPG X線分光器キャリブレーションプログラム')
+    parser.add_argument('--time-mode', choices=['auto', 'manual'], default='auto',
+                       help='時間遅延計算方法 (auto: 自動計算, manual: 手動入力) [デフォルト: auto]')
+    parser.add_argument('--time-delay', type=float,
+                       help='手動入力時の時間遅延 [時間] (--time-mode manual使用時)')
+    
+    args = parser.parse_args()
+    
     try:
         # 1. ファイルパスの入力とショット番号の自動抽出
         print("1. データファイルの指定とショット番号の抽出")
@@ -682,19 +692,34 @@ def main():
         
         # 3. 測定パラメータの入力
         print("\n3. 測定パラメータの入力")
-        time_input = get_user_input()
         
-        if time_input == "auto":
-            # 自動計算モード
+        # コマンドライン引数に基づく時間取得
+        if args.time_mode == 'auto':
             print("   - 自動時間遅延計算を開始します...")
             time_delay = calculate_time_delay_auto(file_path, shot_num, laser_type)
             
             if time_delay is None:
                 print("   - 自動計算に失敗しました。手動入力に切り替えます。")
                 time_delay = float(input("   手動で時間遅延を入力してください（時間）: "))
+        elif args.time_mode == 'manual':
+            if args.time_delay is not None:
+                time_delay = args.time_delay
+                print(f"   - 指定された時間遅延: {time_delay:.3f} 時間")
+            else:
+                time_delay = float(input("   手動で時間遅延を入力してください（時間）: "))
         else:
-            # 手動入力モード
-            time_delay = time_input
+            # この部分は到達しないはずだが、フォールバック
+            time_input = get_user_input()
+            
+            if time_input == "auto":
+                print("   - 自動時間遅延計算を開始します...")
+                time_delay = calculate_time_delay_auto(file_path, shot_num, laser_type)
+                
+                if time_delay is None:
+                    print("   - 自動計算に失敗しました。手動入力に切り替えます。")
+                    time_delay = float(input("   手動で時間遅延を入力してください（時間）: "))
+            else:
+                time_delay = time_input
         
         print("   - 使用する時間遅延: {:.3f} 時間".format(time_delay))
         

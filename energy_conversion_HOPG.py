@@ -377,6 +377,16 @@ def main():
     print("HOPG X線分光器データ解析プログラム")
     print("=" * 60)
     
+    # コマンドライン引数の処理
+    import argparse
+    parser = argparse.ArgumentParser(description='HOPG X線分光器データ解析プログラム')
+    parser.add_argument('--time-mode', choices=['auto', 'manual'], default='auto',
+                       help='時間遅延計算方法 (auto: 自動計算, manual: 手動入力) [デフォルト: auto]')
+    parser.add_argument('--time-delay', type=float,
+                       help='手動入力時の時間遅延 [時間] (--time-mode manual使用時)')
+    
+    args = parser.parse_args()
+
     try:
         # 1. ファイルパスの入力とショット番号の自動抽出
         print("1. データファイルの指定とショット番号の抽出")
@@ -402,7 +412,24 @@ def main():
         
         # 3. ユーザー入力の取得
         print("\n3. 測定パラメータの入力")
-        time_delay = get_user_input(file_path, shot_num, laser_type)
+        
+        # コマンドライン引数に基づく時間取得
+        if args.time_mode == 'auto':
+            print("   - 自動時間遅延計算を開始します...")
+            time_delay = calculate_time_delay_auto(file_path, shot_num, laser_type)
+            
+            if time_delay is None:
+                print("   - 自動計算に失敗しました。手動入力に切り替えます。")
+                time_delay = float(input("   手動で時間遅延を入力してください（時間）: "))
+        elif args.time_mode == 'manual':
+            if args.time_delay is not None:
+                time_delay = args.time_delay
+                print(f"   - 指定された時間遅延: {time_delay:.3f} 時間")
+            else:
+                time_delay = float(input("   手動で時間遅延を入力してください（時間）: "))
+        else:
+            # フォールバック（従来の方法）
+            time_delay = get_user_input(file_path, shot_num, laser_type)
         print("   - 使用する時間遅延: {:.3f} 時間".format(time_delay))
         
         # 4. 実験データの読み込み

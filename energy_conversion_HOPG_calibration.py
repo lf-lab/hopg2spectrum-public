@@ -183,7 +183,7 @@ def calculate_energy_resolution(s):
     return dEdx
 
 def convert_intensity_to_photon(data, E, t, dEdx_func, filter1, filter2):
-    """IPの生データをフォトン数密度に変換
+    """IPの生データを絶対フォトン数密度に変換
     
     Args:
         data (numpy.ndarray): IPスキャンデータ
@@ -193,90 +193,57 @@ def convert_intensity_to_photon(data, E, t, dEdx_func, filter1, filter2):
         filter1, filter2: フィルター透過率関数
     
     Returns:
-        numpy.ndarray: フォトン数密度
+        numpy.ndarray: 絶対フォトン数密度
     """
-    # 各種補正を適用
+    # 結晶反射率
+    crystal_reflectivity = 5E-08
+    
+    # 各種補正を適用（結晶反射率を含む）
     correction_factor = (ip_time_correction(t) * ip_energy_correction(E) * 
-                        0.0025 * dEdx_func(data[:,0]) * filter1(E) * filter2(E))
+                        0.0025 * dEdx_func(data[:,0]) * filter1(E) * filter2(E) * 
+                        crystal_reflectivity)
     
     return data[:,1] * 1000 / correction_factor
 
-def save_data(E, Photon, Energy, shot_num):
+def save_data(E, Photon, shot_num):
     """データの保存
     
     Args:
         E (numpy.ndarray): エネルギー配列
-        Photon (numpy.ndarray): フォトン数密度
-        Energy (float): レーザーエネルギー
+        Photon (numpy.ndarray): 絶対フォトン数密度
         shot_num (str): ショット番号
     """
-    # 生スペクトラムデータをCSVファイルに保存
+    # 絶対フォトン数スペクトラムデータをCSVファイルに保存
     out_raw = np.array([E, Photon]).T
     np.savetxt('data/HOPG_{}.csv'.format(shot_num), out_raw, delimiter=',')
-    
-    # エネルギー規格化スペクトラムデータをCSVファイルに保存
-    out_normalized = np.array([E, Photon/Energy]).T
-    np.savetxt('data_normalize/HOPG_energy_normalize_{}.csv'.format(shot_num), 
-               out_normalized, delimiter=',')
 
-def plot_raw_spectrum(E, Photon, shot_num, Energy):
-    """生スペクトラムのグラフ作成と保存
+def plot_spectrum(E, Photon, shot_num):
+    """絶対フォトン数スペクトラムのグラフ作成と保存
     
     Args:
         E (numpy.ndarray): エネルギー配列
-        Photon (numpy.ndarray): フォトン数密度
+        Photon (numpy.ndarray): 絶対フォトン数密度
         shot_num (str): ショット番号
-        Energy (float): レーザーエネルギー
     """
     plt.rcParams.update({'font.size': 22})
     fig = plt.figure(figsize=(19.20, 10.80))
     ax = fig.add_subplot(111)
     
-    # ショット番号とエネルギー情報をグラフに表示
-    ax.text(np.min(E), 4.5E+5, "{}\n{} kJ".format(shot_num, Energy), 
+    # ショット番号をグラフに表示
+    ax.text(np.min(E), 4.5E+5, "{}".format(shot_num), 
             size=35, color='black')
     
     # 軸ラベルとフォーマット設定
-    ax.set_xlabel("Energy keV", size=30)
-    ax.set_ylabel("Photon/keV", size=30)
+    ax.set_xlabel("Energy [keV]", size=30)
+    ax.set_ylabel("Absolute Photon Number [/keV]", size=30)
     ax.ticklabel_format(style="sci", axis="y", scilimits=(0,0))
     plt.ylim([0, 6E+5])
     
     # スペクトラムをプロット
     ax.plot(E, Photon)
     
-    # 生データのグラフを保存
+    # グラフを保存
     plt.savefig("data/HOPG_{}.png".format(shot_num), bbox_inches='tight', pad_inches=0)
-
-def plot_normalized_spectrum(E, Photon, Energy, shot_num):
-    """エネルギー規格化スペクトラムのグラフ作成と保存
-    
-    Args:
-        E (numpy.ndarray): エネルギー配列
-        Photon (numpy.ndarray): フォトン数密度
-        Energy (float): レーザーエネルギー
-        shot_num (str): ショット番号
-    """
-    plt.figure()
-    plt.rcParams.update({'font.size': 22})
-    fig = plt.figure(figsize=(19.20, 10.80))
-    ax = fig.add_subplot(111)
-    
-    # ショット番号をグラフに表示
-    ax.text(np.min(E), 4.5E+5, "{}".format(shot_num), size=35, color='black')
-    
-    # 軸ラベルとフォーマット設定
-    ax.set_xlabel("Energy keV", size=30)
-    ax.set_ylabel("Photon/keV/kJ", size=30)
-    ax.ticklabel_format(style="sci", axis="y", scilimits=(0,0))
-    plt.ylim([0, 6E+5])
-    
-    # エネルギー規格化スペクトラムをプロット
-    ax.plot(E, Photon/Energy)
-    
-    # エネルギー規格化グラフを保存
-    plt.savefig("data_normalize/HOPG_energy_normalize_{}.png".format(shot_num), 
-                bbox_inches='tight', pad_inches=0)
 
 def extract_shot_number_from_filename(file_path):
     """ファイル名からショット番号を抽出する
@@ -707,10 +674,6 @@ def main():
         print("   - ショット番号: {}".format(shot_num))
         print("   - レーザータイプ: {}".format(laser_type))
         
-        # レーザーエネルギーの設定（必要に応じて調整）
-        laser_energy = 1.325  # デフォルト値 [kJ]
-        print("   - レーザーエネルギー: {} kJ (デフォルト値)".format(laser_energy))
-        
         # 2. フィルターデータの読み込み
         print("\n2. フィルターデータの読み込み中...")
         filter1, filter2 = load_filter_data()
@@ -763,34 +726,28 @@ def main():
         print("\n8. エネルギー分解能関数の生成...")
         dEdx_func = calculate_energy_resolution(s)
         
-        # 9. フォトン数密度への変換
-        print("\n9. フォトン数密度への変換処理中...")
+        # 9. 絶対フォトン数密度への変換
+        print("\n9. 絶対フォトン数密度への変換処理中...")
         Photon = convert_intensity_to_photon(data, E, time_delay, dEdx_func, filter1, filter2)
-        print("   - 最大フォトン数密度: {:.2e} photons/keV".format(np.max(Photon)))
+        print("   - 結晶反射率: 5E-08 適用済み")
+        print("   - 最大絶対フォトン数密度: {:.2e} photons/keV".format(np.max(Photon)))
         print("   - 積分フォトン数: {:.2e} photons".format(np.trapz(Photon, E)))
         
-        # 10. データの保存
-        print("\n10. データの保存中...")
-        save_data(E, Photon, laser_energy, shot_num)
-        print("    - 生データ保存: data/HOPG_{}.csv".format(shot_num))
-        print("    - 規格化データ保存: data_normalize/HOPG_energy_normalize_{}.csv".format(shot_num))
+        # 10. データの保存とグラフ作成
+        print("\n10. データの保存とグラフ作成中...")
+        save_data(E, Photon, shot_num)
+        plot_spectrum(E, Photon, shot_num)
+        print("    - 絶対フォトン数スペクトラムを保存しました: data/HOPG_{}.csv".format(shot_num))
+        print("    - スペクトラムグラフを保存しました: data/HOPG_{}.png".format(shot_num))
         
-        # 11. グラフの作成と保存
-        print("\n11. グラフの作成と保存中...")
-        plot_raw_spectrum(E, Photon, shot_num, laser_energy)
-        print("    - 生スペクトラム: data/HOPG_{}.png".format(shot_num))
-        
-        plot_normalized_spectrum(E, Photon, laser_energy, shot_num)
-        print("    - 規格化スペクトラム: data_normalize/HOPG_energy_normalize_{}.png".format(shot_num))
-        
-        # 12. キャリブレーションパラメータの表示
-        print("\n12. キャリブレーション結果")
+        # 11. キャリブレーションパラメータの表示
+        print("\n11. キャリブレーション結果")
         print("    - 計算されたキャリブレーションパラメータ:")
         pprint.pprint(s)
         print("    - これらの値を energy_conversion_HOPG.py で使用してください")
         
-        # 13. energy_conversion_HOPG.py のキャリブレーションパラメータを自動更新
-        print("\n13. energy_conversion_HOPG.py のキャリブレーションパラメータを自動更新中...")
+        # 12. energy_conversion_HOPG.py のキャリブレーションパラメータを自動更新
+        print("\n12. energy_conversion_HOPG.py のキャリブレーションパラメータを自動更新中...")
         if update_analysis_script_calibration(s, shot_num, file_path):
             print("    - energy_conversion_HOPG.py のキャリブレーションパラメータを更新しました")
         else:
@@ -799,6 +756,9 @@ def main():
         print("\n" + "=" * 70)
         print("キャリブレーションと解析完了！")
         print("ショット番号: {} ({} レーザー)".format(shot_num, laser_type))
+        print("出力ファイル:")
+        print("  - 絶対フォトン数スペクトラム: data/HOPG_{}.csv".format(shot_num))
+        print("  - スペクトラムグラフ: data/HOPG_{}.png".format(shot_num))
         print("=" * 70)
         
     except FileNotFoundError as e:

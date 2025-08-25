@@ -1,24 +1,14 @@
 # HOPG（Highly Ordered Pyrolytic Graphite）X線分光器データ解析プログラム
 # 事前キャリブレーション済みパラメータを使用してスペクトラム解析を実行
 
-import pprint
 import numpy as np
 import re
 import os
 import sys
 import tkinter as tk
-from tkinter import filedialog, messagebox
-from time import sleep
-from scipy.optimize import differential_evolution
-from scipy import integrate
-from scipy.interpolate import interp1d
-from numpy.linalg import solve
+from tkinter import filedialog
 import matplotlib.pyplot as plt
-import csv
-import requests
-from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
-import urllib.parse
+from scipy.interpolate import interp1d
 
 # 時間計算関数をenergy_conversion_HOPG_calibration.pyからインポート
 try:

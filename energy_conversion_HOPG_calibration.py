@@ -14,6 +14,10 @@ from numpy.linalg import solve
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import csv
+import requests
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
+import urllib.parse
 
 # HOPGの格子間隔 [Å]
 D_HOPG = 3.357 
@@ -64,8 +68,19 @@ def get_user_input():
     Returns:
         float: 測定時間遅延 [時間]
     """
-    t = input("Input the scaning time delay : ")
-    return float(t)
+    print("測定時間遅延の入力方法を選択してください:")
+    print("1. 自動計算（ファイル名とWebページから）")
+    print("2. 手動入力")
+    
+    while True:
+        choice = input("選択 (1 または 2): ").strip()
+        if choice == "1":
+            return "auto"
+        elif choice == "2":
+            t = input("Input the scanning time delay (hours): ")
+            return float(t)
+        else:
+            print("1 または 2 を入力してください。")
 
 def load_experimental_data(shot_num, file_path):
     """実験データの読み込み
@@ -475,6 +490,161 @@ def update_analysis_script_calibration(s, shot_num, file_path):
         print("    - 自動更新中にエラーが発生: {}".format(e))
         return False
 
+def extract_reading_time_from_filename(file_path):
+    """ファイル名からIP読み取り時刻を抽出する
+    
+    Args:
+        file_path (str): データファイルのパス
+    
+    Returns:
+        tuple: (hours, minutes) - 読み取り時刻の時間と分
+        
+    Raises:
+        ValueError: 読み取り時刻が見つからない場合
+    """
+    # ファイル名のみを取得
+    filename = os.path.basename(file_path)
+    
+    # _HOPG_XXXX パターンを検索（XXXXは4桁の数字）
+    pattern = r'_HOPG_(\d{4})'
+    match = re.search(pattern, filename)
+    
+    if match:
+        time_str = match.group(1)
+        hours = int(time_str[:2])    # 最初の2桁が時間
+        minutes = int(time_str[2:])  # 残りの2桁が分
+        
+        # 時間と分の妥当性チェック
+        if 0 <= hours <= 23 and 0 <= minutes <= 59:
+            return hours, minutes
+        else:
+            raise ValueError("無効な時刻: {}時{}分".format(hours, minutes))
+    else:
+        raise ValueError("ファイル名にIP読み取り時刻（_HOPG_XXXX）が見つかりません")
+
+def fetch_shot_time_from_web(shot_num, laser_type):
+    """Webページからショット時刻を取得する
+    
+    Args:
+        shot_num (str): ショット番号（GまたはLプレフィックス付き）
+        laser_type (str): レーザータイプ（"GXII" または "LFEX"）
+    
+    Returns:
+        tuple: (hours, minutes) - ショット時刻の時間と分、取得失敗時は (None, None)
+    """
+    try:
+        # ショット番号からGまたはLプレフィックスを除去
+        shot_id = shot_num[1:] if shot_num.startswith(('G', 'L')) else shot_num
+        
+        # URLの構築
+        if laser_type == "GXII":
+            url = "http://god.ile.osaka-u.ac.jp/gxii/ShotDataViewer/ShotDataViewer.php?Id={}".format(shot_id)
+            target_line = 133  # GXII の場合は133行目
+        elif laser_type == "LFEX":
+            url = "http://god.ile.osaka-u.ac.jp/lfex-fe/ShotDataViewer/ShotDataViewer?Id={}".format(shot_id)
+            target_line = 101  # LFEX の場合は101行目
+        else:
+            print("    - 不明なレーザータイプ: {}".format(laser_type))
+            return None, None
+        
+        print("    - ショット時刻取得中: {}".format(url))
+        
+        # Webページを取得
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        # HTMLを解析
+        soup = BeautifulSoup(response.content, 'html.parser')
+        html_lines = str(soup).split('\n')
+        
+        # 指定行を取得（1ベースのインデックスを0ベースに変換）
+        if len(html_lines) >= target_line:
+            target_content = html_lines[target_line - 1]
+            
+            # 時刻パターンを検索（HH:MM形式）
+            time_pattern = r'(\d{1,2}):(\d{2})'
+            time_match = re.search(time_pattern, target_content)
+            
+            if time_match:
+                hours = int(time_match.group(1))
+                minutes = int(time_match.group(2))
+                
+                # 時間と分の妥当性チェック
+                if 0 <= hours <= 23 and 0 <= minutes <= 59:
+                    print("    - ショット時刻: {}時{}分".format(hours, minutes))
+                    return hours, minutes
+                else:
+                    print("    - 無効な時刻形式: {}時{}分".format(hours, minutes))
+            else:
+                print("    - {}行目に時刻情報が見つかりません".format(target_line))
+                print("    - 行の内容: {}".format(target_content.strip()[:100]))
+        else:
+            print("    - HTMLの行数が不足しています（{}行未満）".format(target_line))
+            
+    except requests.exceptions.RequestException as e:
+        print("    - Webページ取得エラー: {}".format(e))
+    except Exception as e:
+        print("    - ショット時刻取得エラー: {}".format(e))
+    
+    return None, None
+
+def calculate_time_delay_auto(file_path, shot_num, laser_type):
+    """ファイル名とWebページから自動的に時間遅延を計算する
+    
+    Args:
+        file_path (str): データファイルのパス
+        shot_num (str): ショット番号
+        laser_type (str): レーザータイプ
+    
+    Returns:
+        float: 時間遅延 [時間]、計算失敗時は None
+    """
+    try:
+        # 1. ファイル名からIP読み取り時刻を抽出
+        print("    - ファイル名からIP読み取り時刻を抽出中...")
+        read_hours, read_minutes = extract_reading_time_from_filename(file_path)
+        print("    - IP読み取り時刻: {}時{}分".format(read_hours, read_minutes))
+        
+        # 2. Webページからショット時刻を取得
+        print("    - Webページからショット時刻を取得中...")
+        shot_hours, shot_minutes = fetch_shot_time_from_web(shot_num, laser_type)
+        
+        if shot_hours is None or shot_minutes is None:
+            print("    - ショット時刻の取得に失敗しました")
+            return None
+        
+        # 3. 時間差分を計算
+        # 読み取り時刻とショット時刻を分単位で計算
+        read_total_minutes = read_hours * 60 + read_minutes
+        shot_total_minutes = shot_hours * 60 + shot_minutes
+        
+        # 時間差分（読み取り時刻 - ショット時刻）
+        time_diff_minutes = read_total_minutes - shot_total_minutes
+        
+        # 日をまたいだ場合の処理（負の値の場合は翌日とみなす）
+        if time_diff_minutes < 0:
+            time_diff_minutes += 24 * 60  # 24時間を加算
+        
+        # 時間単位に変換
+        time_delay_hours = time_diff_minutes / 60.0
+        
+        print("    - 時間差分計算結果:")
+        print("      ショット時刻: {}時{}分".format(shot_hours, shot_minutes))
+        print("      IP読み取り時刻: {}時{}分".format(read_hours, read_minutes))
+        print("      時間遅延: {:.2f} 時間".format(time_delay_hours))
+        
+        return time_delay_hours
+        
+    except ValueError as e:
+        print("    - 時間抽出エラー: {}".format(e))
+        return None
+    except Exception as e:
+        print("    - 時間遅延計算エラー: {}".format(e))
+        return None
+
 def main():
     """HOPG X線分光器キャリブレーションと解析のメイン処理"""
     
@@ -509,10 +679,23 @@ def main():
         print("   - ベリリウムフィルター読み込み完了")
         print("   - ポリエチレンフィルター読み込み完了")
         
-        # 3. ユーザー入力の取得
+        # 3. 測定パラメータの入力
         print("\n3. 測定パラメータの入力")
-        time_delay = get_user_input()
-        print("   - 時間遅延: {} 時間".format(time_delay))
+        time_input = get_user_input()
+        
+        if time_input == "auto":
+            # 自動計算モード
+            print("   - 自動時間遅延計算を開始します...")
+            time_delay = calculate_time_delay_auto(file_path, shot_num, laser_type)
+            
+            if time_delay is None:
+                print("   - 自動計算に失敗しました。手動入力に切り替えます。")
+                time_delay = float(input("   手動で時間遅延を入力してください（時間）: "))
+        else:
+            # 手動入力モード
+            time_delay = time_input
+        
+        print("   - 使用する時間遅延: {:.3f} 時間".format(time_delay))
         
         # 4. 実験データの読み込み
         print("\n4. 実験データの読み込み中...")

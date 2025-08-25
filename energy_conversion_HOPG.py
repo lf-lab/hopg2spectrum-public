@@ -14,6 +14,33 @@ from scipy.interpolate import interp1d
 from numpy.linalg import solve
 import matplotlib.pyplot as plt
 import csv
+import requests
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
+import urllib.parse
+import numpy as np
+import re
+import os
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from time import sleep
+from scipy.optimize import differential_evolution
+from scipy import integrate
+from scipy.interpolate import interp1d
+from numpy.linalg import solve
+import matplotlib.pyplot as plt
+import csv
+
+# 時間計算関数をenergy_conversion_HOPG_calibration.pyからインポート
+try:
+    from energy_conversion_HOPG_calibration import (
+        extract_reading_time_from_filename,
+        fetch_shot_time_from_web,
+        calculate_time_delay_auto
+    )
+    AUTO_TIME_AVAILABLE = True
+except ImportError:
+    AUTO_TIME_AVAILABLE = False
 
 # HOPGの格子間隔 [Å]
 D_HOPG = 3.357 
@@ -58,14 +85,46 @@ def load_filter_data():
     
     return filter1, filter2
 
-def get_user_input():
+def get_user_input(file_path=None, shot_num=None, laser_type=None):
     """ユーザーからの入力取得
+    
+    Args:
+        file_path (str, optional): データファイルパス（自動計算用）
+        shot_num (str, optional): ショット番号（自動計算用）
+        laser_type (str, optional): レーザータイプ（自動計算用）
     
     Returns:
         float: 測定時間遅延 [時間]
     """
-    t = input("Input the scaning time delay : ")
-    return float(t)
+    if AUTO_TIME_AVAILABLE and file_path and shot_num and laser_type:
+        print("測定時間遅延の入力方法を選択してください:")
+        print("1. 自動計算（ファイル名とWebページから）")
+        print("2. 手動入力")
+        
+        while True:
+            choice = input("選択 (1 または 2): ").strip()
+            if choice == "1":
+                print("   - 自動時間遅延計算を開始します...")
+                time_delay = calculate_time_delay_auto(file_path, shot_num, laser_type)
+                
+                if time_delay is None:
+                    print("   - 自動計算に失敗しました。手動入力に切り替えます。")
+                    t = input("   手動で時間遅延を入力してください（時間）: ")
+                    return float(t)
+                else:
+                    print("   - 自動計算完了: {:.3f} 時間".format(time_delay))
+                    return time_delay
+            elif choice == "2":
+                t = input("Input the scanning time delay (hours): ")
+                return float(t)
+            else:
+                print("1 または 2 を入力してください。")
+    else:
+        # 自動計算が利用できない場合は手動入力のみ
+        if not AUTO_TIME_AVAILABLE:
+            print("注意: 自動時間計算機能が利用できません（キャリブレーションスクリプトが必要）")
+        t = input("Input the scanning time delay (hours): ")
+        return float(t)
 
 def load_experimental_data(shot_num, file_path):
     """実験データの読み込み
@@ -399,8 +458,8 @@ def main():
         
         # 3. ユーザー入力の取得
         print("\n3. 測定パラメータの入力")
-        time_delay = get_user_input()
-        print("   - 時間遅延: {} 時間".format(time_delay))
+        time_delay = get_user_input(file_path, shot_num, laser_type)
+        print("   - 使用する時間遅延: {:.3f} 時間".format(time_delay))
         
         # 4. 実験データの読み込み
         print("\n4. 実験データの読み込み中...")

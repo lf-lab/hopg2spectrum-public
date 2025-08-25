@@ -207,6 +207,20 @@ def convert_intensity_to_photon(data, E, t, dEdx_func, filter1, filter2):
     
     return data[:,1] * 1000 / correction_factor
 
+def ensure_directory_exists(directory):
+    """ディレクトリが存在しない場合は作成する
+    
+    Args:
+        directory (str): 作成するディレクトリのパス
+    """
+    if not os.path.exists(directory):
+        try:
+            os.makedirs(directory)
+            print(f"   - ディレクトリを作成しました: {directory}")
+        except OSError as e:
+            print(f"   - ディレクトリ作成エラー: {e}")
+            raise
+
 def save_data(E, Photon, shot_num):
     """データの保存
     
@@ -215,6 +229,9 @@ def save_data(E, Photon, shot_num):
         Photon (numpy.ndarray): 絶対フォトン数密度
         shot_num (str): ショット番号
     """
+    # データフォルダの存在確認・作成
+    ensure_directory_exists('data')
+    
     # 絶対フォトン数スペクトラムデータをCSVファイルに保存
     out_raw = np.array([E, Photon]).T
     np.savetxt('data/HOPG_{}.csv'.format(shot_num), out_raw, delimiter=',')
@@ -227,6 +244,9 @@ def plot_spectrum(E, Photon, shot_num):
         Photon (numpy.ndarray): 絶対フォトン数密度
         shot_num (str): ショット番号
     """
+    # データフォルダの存在確認・作成
+    ensure_directory_exists('data')
+    
     plt.rcParams.update({'font.size': 22})
     fig = plt.figure(figsize=(19.20, 10.80))
     ax = fig.add_subplot(111)

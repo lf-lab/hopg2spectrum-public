@@ -36,7 +36,7 @@ debug_*.py
 analyze_*.py
 
 # Data files
-*.dat
+# *.dat  # フィルターファイル(.dat)は含める
 *.csv
 data/
 data_normalize/

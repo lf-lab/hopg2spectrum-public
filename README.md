@@ -10,6 +10,7 @@ A collection of Python programs for analyzing and calibrating X-ray spectroscopy
 ### Recommended Citation
 ```
 HOPG X-ray Spectrometer Data Analysis System (Public Version)
+Ryunosuke Takizawa
 Institute of Laser Engineering, Osaka University
 Available at: https://github.com/lf-lab/hopg2spectrum-public
 ```
@@ -17,7 +18,7 @@ Available at: https://github.com/lf-lab/hopg2spectrum-public
 ### Acknowledgment
 ```
 This research utilized the HOPG X-ray spectrometer data analysis tools 
-developed by the Institute of Laser Engineering, Osaka University.
+developed by Ryunosuke Takizawa at the Institute of Laser Engineering, Osaka University.
 ```
 
 **For academic publications, please also consider citing relevant papers on HOPG-based X-ray spectroscopy methods and laser fusion diagnostics from the Institute of Laser Engineering, Osaka University.**

@@ -5,6 +5,7 @@ A collection of Python programs for analyzing and calibrating X-ray spectroscopy
 ## 📝 Citation and Acknowledgment
 
 **If you use this software in your research, please include the following citation and acknowledgment:**
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.16946066.svg)](https://doi.org/10.5281/zenodo.16946066)
 
 ### Recommended Citation
 ```

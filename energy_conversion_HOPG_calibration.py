@@ -559,10 +559,15 @@ def get_file_path_gui():
         ('All files', '*.*')
     ]
     
+    # profileディレクトリの絶対パスを構築
+    profile_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'profile')
+    # profileディレクトリが存在しない場合は現在のディレクトリを使用
+    initial_dir = profile_dir if os.path.exists(profile_dir) else os.getcwd()
+    
     file_path = filedialog.askopenfilename(
         title='HOPG データファイルを選択してください',
         filetypes=filetypes,
-        initialdir=os.getcwd()  # 現在のディレクトリから開始
+        initialdir=initial_dir  # profileディレクトリから開始
     )
     
     # ルートウィンドウを破棄

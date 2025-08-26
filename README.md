@@ -1,15 +1,163 @@
-# HOPG X線分光器データ解析システム（パブリック版）
+# HOPG X-ray Spectrometer Data Analysis System (Public Version)
 
-HOPG（Highly Ordered Pyrolytic Graphite）を用いたX線分光測定データの解析とキャリブレーションを行うPythonプログラム集です。
+A collection of Python programs for analyzing and calibrating X-ray spectroscopy measurement data using HOPG (Highly Ordered Pyrolytic Graphite).
 
-## ⚠️ 重要な注意事項（パブリック版）
+## ⚠️ Important Notice (Public Version)
 
-このバージョンは一般公開用です。以下の機能は特定の研究機関内でのみ動作します：
+This is the public release version. The following features require access to specific institutional networks:
 
-- **自動時間遅延計算機能**: 内部Webデータベースへの接続が必要
-- **ショット時刻の自動取得**: 特定ネットワーク環境でのみ利用可能
+- **Automatic time delay calculation**: Requires connection to internal web database
+- **Automatic shot time retrieval**: Only available in specific network environments
 
-一般ユーザーの方は、時間遅延を手動で指定してご利用ください。
+General users should manually specify the time delay using the `-t` option.
+
+## Overview
+
+This project provides automated tools for X-ray energy measurement data processing in laser fusion experiments, utilizing HOPG diffraction-based X-ray spectrometers. It converts position-intensity data acquired from Imaging Plates (IP) into energy-absolute photon number density spectra.
+
+## Key Features
+
+- **Automatic Energy Calibration**: Automated calibration using known reference lines
+- **Interactive Calibration**: GUI-based manual selection and fine-tuning of reference line positions
+- **Automatic Time Delay Calculation**: Automatic time delay calculation from filenames and web database (requires institutional network access)
+- **Filter Correction**: Transmittance correction for beryllium and polyethylene filters
+- **Graph Output**: Automatic generation of high-quality PDF graphs
+- **Data Export**: CSV format spectrum data output
+
+## File Structure
+
+```
+hopg2spectrum/
+├── energy_conversion_HOPG.py              # Main analysis program
+├── energy_conversion_HOPG_calibration.py  # Calibration-specific program
+├── filter/                                # Filter transmittance data
+│   ├── Be_500um_transmittance.dat         # Beryllium filter (500μm)
+│   └── CH2_50um_transmittance.dat         # Polyethylene filter (50μm)
+├── profile/                               # IP scan data directory
+│   └── README.md                          # Data format instructions
+├── data/                                  # Analysis results output directory
+│   └── README.md                          # Output format description
+└── README.md                              # This file
+```
+
+## Required Libraries
+
+```bash
+pip install numpy scipy matplotlib tkinter requests beautifulsoup4
+```
+
+## Usage
+
+### 1. Standard Analysis (energy_conversion_HOPG.py)
+
+Execute rapid analysis using existing calibration parameters:
+
+```bash
+# Basic usage (automatic time delay calculation)
+python energy_conversion_HOPG.py
+
+# Manual time delay specification (recommended for general users)
+python energy_conversion_HOPG.py -t 23
+
+# Interactive calibration mode
+python energy_conversion_HOPG.py -c
+```
+
+**Operation Steps:**
+1. Select IP scan data file (CSV file) via GUI
+2. Extract shot number and calculate time delay (or manual input)
+   - **General users**: Always specify time delay using `-t` option
+3. Execute energy conversion and filter correction
+4. Output results as CSV file and PDF graph
+
+### 2. Calibration (energy_conversion_HOPG_calibration.py)
+
+Set new calibration parameters:
+
+```bash
+# Execute calibration (requires institutional network access)
+python energy_conversion_HOPG_calibration.py
+
+# Manual time delay specification
+python energy_conversion_HOPG_calibration.py -t 25
+```
+
+**Operation Steps:**
+1. Select IP scan data file
+2. Interactively select two reference line positions on the graph
+3. Fine-tune positions by dragging
+4. Calculate new calibration parameters
+5. Automatically update main program parameters
+
+## Data File Formats
+
+### Input Data (IP Scan Data)
+- Filename format: `YYMMDD_GXXXXX_HOPG_HHMM.csv`
+  - `YYMMDD`: Measurement date
+  - `GXXXXX or LXXXX`: Shot number
+  - `HHMM`: IP reading time
+- CSV format: `Position[cm], Intensity[PSL]`
+
+### Output Data (Absolute Photon Number Spectrum)
+- Filename: `HOPG_GXXXXX.csv`
+- CSV format: `Energy[keV], Absolute_Photon_Number_Density[photons/keV]`
+
+## Technical Specifications
+
+### Calibration Method
+- **Reference Energy Lines**: Cu-Kα line (8.048 keV) and He-α line (8.391 keV)
+- **Lattice Spacing**: d = 3.357 Å
+- **Crystal Reflectivity**: 5E-08 str
+
+### Correction Processes
+- **Time Decay Correction**: Accounts for time-dependent IP sensitivity
+- **Energy Response Correction**: Corrects for IP energy response characteristics
+- **Filter Transmittance Correction**: Removes effects of beryllium and polyethylene filters
+- **Crystal Reflectivity Correction**: Accounts for HOPG crystal reflectivity
+
+### Automation Features
+- **Automatic Time Delay Calculation**: Extracts reading time from filename and retrieves shot time from web database
+- **Automatic Laser Type Detection**: Automatically determines GXII/LFEX laser from shot number
+- **Automatic Directory Creation**: Creates output directories if they don't exist
+
+## Interactive Features
+
+### Calibration Position Selection
+- Click-based reference line position selection on graphs
+- Drag-based position fine-tuning functionality
+- Real-time position display and parameter updates
+
+### File Selection
+- Initial directory set to `profile/` folder
+- Automatic CSV file filtering
+- Intuitive GUI-based file selection
+
+## Error Handling
+
+- **Interactive Mode Failure**: Automatically falls back to maximum value position selection
+- **Web Connection Errors**: Switches to manual time delay input
+- **File Reading Errors**: Displays error messages and continues processing appropriately
+
+## Development History
+
+- August 2024: Initial version development
+- August 2024: Automatic directory creation feature added
+- August 2024: Interactive calibration feature added
+- August 2024: Code refactoring and feature separation
+
+## License
+
+Intended for research use. Please contact us before commercial use.
+
+## Authors
+
+Institute of Laser Engineering, Osaka University
+
+## Important Notes
+
+- Automatic shot time retrieval requires connection to the Laser Science Institute network
+- Please save IP scan data in the specified format
+- Always test with sample data after calibration
 
 ## 概要
 

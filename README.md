@@ -2,6 +2,25 @@
 
 A collection of Python programs for analyzing and calibrating X-ray spectroscopy measurement data using HOPG (Highly Ordered Pyrolytic Graphite).
 
+## 📝 Citation and Acknowledgment
+
+**If you use this software in your research, please include the following citation and acknowledgment:**
+
+### Recommended Citation
+```
+HOPG X-ray Spectrometer Data Analysis System (Public Version)
+Institute of Laser Engineering, Osaka University
+Available at: https://github.com/lf-lab/hopg2spectrum-public
+```
+
+### Acknowledgment
+```
+This research utilized the HOPG X-ray spectrometer data analysis tools 
+developed by the Institute of Laser Engineering, Osaka University.
+```
+
+**For academic publications, please also consider citing relevant papers on HOPG-based X-ray spectroscopy methods and laser fusion diagnostics from the Institute of Laser Engineering, Osaka University.**
+
 ## ⚠️ Important Notice (Public Version)
 
 This is the public release version. The following features require access to specific institutional networks:

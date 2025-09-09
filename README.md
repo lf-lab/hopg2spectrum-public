@@ -277,7 +277,7 @@ python energy_conversion_HOPG_calibration.py -t 25
 ### キャリブレーション方式
 - **基準エネルギー**: Cu-Kα線 (8.048 keV) と He-α線 (8.391 keV)
 - **格子間隔**: d = 3.357 Å
-- **結晶反射率**: 5E-08 str
+- **結晶反射率**: 5±1E-08 str (Calibrated by R.Takizawa 2021/08/24)
 
 ### 補正処理
 - **時間減衰補正**: IP感度の時間依存性を考慮

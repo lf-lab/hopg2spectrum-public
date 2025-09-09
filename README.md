@@ -128,7 +128,7 @@ python energy_conversion_HOPG_calibration.py -t 25
 ### Calibration Method
 - **Reference Energy Lines**: Cu-Kα line (8.048 keV) and He-α line (8.391 keV)
 - **Lattice Spacing**: d = 3.357 Å
-- **Crystal Reflectivity**: 5E-08 str
+- **Crystal Reflectivity**: 5±1E-08 str (Calibrated by R.Takizawa 2021/08/24)
 
 ### Correction Processes
 - **Time Decay Correction**: Accounts for time-dependent IP sensitivity
